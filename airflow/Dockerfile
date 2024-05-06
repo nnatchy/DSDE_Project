@@ -4,7 +4,11 @@ FROM apache/airflow:2.6.1rc2
 COPY requirements.txt /tmp/requirements.txt
 
 # Install additional Python packages specified in requirements.txt
-# Note that we no longer use the --user flag because it's not needed within the Docker container environment
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Install the forked version of kafka-python
+RUN pip uninstall -y kafka-python  
+# Ensure removal of the existing kafka-python if it's included in requirements.txt
+RUN pip install git+https://github.com/yourfork/kafka-python-ng.git
 
 # Continue with the setup...
