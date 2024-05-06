@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Animation Demo</title>
+</head>
+<body>
+    <img id="animation_img" src="" alt="Animation Frame">
+    <input type="range" id="frame_slider" min="0" oninput="animation.set_frame(parseInt(this.value));">
+    <div>
+        <button onclick="animation.first_frame()">First</button>
+        <button onclick="animation.previous_frame()">Previous</button>
+        <button onclick="animation.next_frame()">Next</button>
+        <button onclick="animation.last_frame()">Last</button>
+        <button onclick="animation.play_animation()">Play</button>
+        <button onclick="animation.pause_animation()">Pause</button>
+        <button onclick="animation.reverse_animation()">Reverse</button>
+        <button onclick="animation.slower()">Slower</button>
+        <button onclick="animation.faster()">Faster</button>
+    </div>
+    <script>
+        // Assuming the Animation code you provided is saved in 'animation.js'
+        document.addEventListener("DOMContentLoaded", function() {
+            var frames = ['frame1.jpg', 'frame2.jpg', 'frame3.jpg']; // Add your frame URLs here
+            var animation = new Animation("animation_img", "frame_slider", frames);
+        });
+    </script>
+</body>
+</html>
