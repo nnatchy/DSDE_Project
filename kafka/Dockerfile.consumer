@@ -1,0 +1,10 @@
+# Example Dockerfile modification for Producer
+FROM python:3.8-slim
+WORKDIR /app
+COPY requirements.txt /app/
+RUN pip install -r requirements.txt
+COPY . /app/
+# Download and prepare the wait-for-it script
+ADD https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh /usr/wait-for-it.sh
+RUN chmod +x /usr/wait-for-it.sh
+CMD ["/usr/wait-for-it.sh", "kafka1:9092", "--strict", "--timeout=20", "--", "python", "consumer.py"]
