@@ -8,6 +8,7 @@ import os
 from urllib.parse import quote
 import requests
 from kafka import KafkaProducer
+import time
 
 # default_args = {
 #     'owner': 'airflow',
@@ -127,8 +128,13 @@ def scrape_and_save():
 
     for subject in subjects:
         for date_range in date_range_lists:
-            file_name = f"research_{subject}_{date_range.replace('-', '_')}.json"
+            # Simplify the filename construction
+            cur_year = date_range.split('-')[0]
+            file_name = f"research_{subject}_{cur_year}.json"
             file_path = os.path.join(output_directory, file_name)
+
+            # Debug print to check filename before processing
+            print(f"Generated filename: {file_name}")
             
             # Check if the file already exists
             if os.path.exists(file_path):
@@ -139,6 +145,7 @@ def scrape_and_save():
             print(f"Scraping data for {subject} {date_range}")
             article_data = scrape_nature(date_range, subject)
             save_json(article_data, output_directory, file_name)
+
 
 
 
@@ -370,7 +377,7 @@ def process_article_details():
 def send_nature_to_kafka():
     output_directory = "/opt/airflow/data"
     producer = KafkaProducer(
-        bootstrap_servers='kafka1:9092', 
+        bootstrap_servers='kafka1:19092', 
         value_serializer=lambda x: json.dumps(x, ensure_ascii=False).encode('utf-8')
     )
     # Iterate through each JSON file in the specified directory
@@ -392,6 +399,26 @@ def send_nature_to_kafka():
     
     producer.flush()  # Ensure all messages are sent before closing the connection
     print("Finished sending all articles to Kafka.")
+
+# def send_nature_to_kafka():
+#     producer = KafkaProducer(
+#         # bootstrap_servers=['localhost:9092'],
+#         bootstrap_servers=['kafka1:19092'],
+#         value_serializer=lambda x: json.dumps(x).encode('utf-8'),
+#         request_timeout_ms=60000,  # Increase timeout to 60 seconds
+#         retry_backoff_ms=500,  # Increase backoff time between retries
+#     )
+
+#     for i in range(100):
+#         message = {'number': i}
+#         try:
+#             producer.send('test-topic', value=message).get(timeout=30)  # Wait up to 30 seconds
+#             print(f"Sent: {message}")
+#         except Exception as e:
+#             print(f"Failed to send message: {str(e)}")
+#         time.sleep(1)
+
+#     producer.flush()
 
 scrape_task = PythonOperator(
     task_id='scrape_nature',
