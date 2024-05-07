@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 import os
 from urllib.parse import quote
 import requests
-# from kafka import KafkaProducer
+from kafka import KafkaProducer
 
 # default_args = {
 #     'owner': 'airflow',
@@ -367,12 +367,31 @@ def process_article_details():
 
 
 # send_to_kafka.py
-# def send_to_kafka(article_data):
-#     producer = KafkaProducer(bootstrap_servers='kafka1:9092', value_serializer=lambda x: json.dumps(x).encode('utf-8'))
-#     for article in article_data:
-#         producer.send('test-topic', value=article)
-#     producer.flush()
+def send_nature_to_kafka():
+    output_directory = "/opt/airflow/data"
+    producer = KafkaProducer(
+        bootstrap_servers='kafka1:9092', 
+        value_serializer=lambda x: json.dumps(x, ensure_ascii=False).encode('utf-8')
+    )
+    # Iterate through each JSON file in the specified directory
+    for filename in os.listdir(output_directory):
+        if filename.endswith(".json"):
+            file_path = os.path.join(output_directory, filename)
+            try:
+                # Open and load the JSON data from the file
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    articles = json.load(file)
+                
+                # Send each article in the JSON file to Kafka
+                for article in articles:
+                    producer.send('test-topic', value=article).get(timeout=30)  # Ensuring each message is sent
+                    print(f"Sent article titled: '{article.get('Title', 'No title available')}'")  # Safe access to 'Title'
 
+            except Exception as e:
+                print(f"Failed to send message for {filename}: {str(e)}")
+    
+    producer.flush()  # Ensure all messages are sent before closing the connection
+    print("Finished sending all articles to Kafka.")
 
 scrape_task = PythonOperator(
     task_id='scrape_nature',
@@ -386,11 +405,10 @@ process_task = PythonOperator(
     dag=dag,
 )
 
-# send_to_kafka_task = PythonOperator(
-#     task_id='send_to_kafka',
-#     python_callable=send_to_kafka,
-#     dag=dag,
-# )
+send_to_kafka_task = PythonOperator(
+    task_id='send_nature_to_kafka',
+    python_callable=send_nature_to_kafka,
+    dag=dag,
+)
 
-# scrape_task >> process_task >> send_to_kafka_task
-scrape_task >> process_task
+scrape_task >> process_task >> send_to_kafka_task
