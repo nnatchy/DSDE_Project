@@ -1,0 +1,5 @@
+venv
+dags/__pycache__
+*.pyo
+.git
+*.pyc

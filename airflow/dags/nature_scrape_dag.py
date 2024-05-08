@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 import os
 from urllib.parse import quote
 import requests
-from kafka import KafkaProducer
+from kafka import KafkaProducer, KafkaConsumer
 import time
 
 # default_args = {
@@ -24,6 +24,7 @@ import time
 #     schedule_interval='@daily',
 #     catchup=False
 # )
+
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
@@ -391,7 +392,10 @@ def send_nature_to_kafka():
                 
                 # Send each article in the JSON file to Kafka
                 for article in articles:
-                    producer.send('test-topic', value=article).get(timeout=30)  # Ensuring each message is sent
+                    producer.send(
+                        'nature-topic', 
+                        value=article
+                    ).get(timeout=30)  # Ensuring each message is sent
                     print(f"Sent article titled: '{article.get('Title', 'No title available')}'")  # Safe access to 'Title'
 
             except Exception as e:
@@ -399,26 +403,6 @@ def send_nature_to_kafka():
     
     producer.flush()  # Ensure all messages are sent before closing the connection
     print("Finished sending all articles to Kafka.")
-
-# def send_nature_to_kafka():
-#     producer = KafkaProducer(
-#         # bootstrap_servers=['localhost:9092'],
-#         bootstrap_servers=['kafka1:19092'],
-#         value_serializer=lambda x: json.dumps(x).encode('utf-8'),
-#         request_timeout_ms=60000,  # Increase timeout to 60 seconds
-#         retry_backoff_ms=500,  # Increase backoff time between retries
-#     )
-
-#     for i in range(100):
-#         message = {'number': i}
-#         try:
-#             producer.send('test-topic', value=message).get(timeout=30)  # Wait up to 30 seconds
-#             print(f"Sent: {message}")
-#         except Exception as e:
-#             print(f"Failed to send message: {str(e)}")
-#         time.sleep(1)
-
-#     producer.flush()
 
 scrape_task = PythonOperator(
     task_id='scrape_nature',

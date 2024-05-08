@@ -37,6 +37,14 @@
 # Feel free to modify this file to suit your needs.
 
 version: '3'
+x-spark-common: &spark-common
+  image: bitnami/spark:latest
+  volumes:
+    - ./dags:/opt/bitnami/spark/dags
+    - scopus-volume:/opt/bitnami/scopus
+  networks:
+    - dsde
+
 x-airflow-common:
   &airflow-common
   build: .
@@ -56,12 +64,15 @@ x-airflow-common:
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
     - ./data:/home/airflow/data
+    - scopus-volume:/opt/airflow/scopus
   user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
   depends_on:
     redis:
       condition: service_healthy
     postgres:
       condition: service_healthy
+  networks:
+    - dsde
 
     
 services:
@@ -135,6 +146,8 @@ services:
       timeout: 10s
       retries: 5
     # restart: always
+    volumes:
+      - scopus-volume:/opt/airflow/scopus
     networks:
       - dsde
 
@@ -163,6 +176,28 @@ services:
     restart: always
     networks:
       - dsde
+
+  spark-master:
+    <<: *spark-common
+    container_name: spark-master
+    command: bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "9090:8080"
+      - "7077:7077"
+
+  spark-worker:
+    <<: *spark-common
+    container_name: spark-worker
+    command: bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    depends_on:
+      - spark-master
+    environment:
+      SPARK_MODE: worker
+      SPARK_WORKER_CORES: 2
+      SPARK_WORKER_MEMORY: 1g
+      SPARK_MASTER_URL: spark://spark-master:7077
+    volumes:
+      - scopus-volume:/opt/bitnami/scopus
 
   zoo1:
     image: confluentinc/cp-zookeeper:7.3.2
@@ -206,6 +241,7 @@ services:
   
 volumes:
   postgres-db-volume:
+  scopus-volume:
 
 networks:
   dsde: {}
