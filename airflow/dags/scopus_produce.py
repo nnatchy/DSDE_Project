@@ -227,10 +227,16 @@ def process_directory(year):
         request_timeout_ms=60000,
         retry_backoff_ms=500,
     )
-
+    
+    # For real zip
+    
     year_path = os.path.join(base_path, str(year), f'{year}_test')
-    if year == 2018:
-        year_path = os.path.join(base_path, str(year), f'{year} copy')
+    
+    # For test zip
+
+    # year_path = os.path.join(base_path, str(year), f'{year}_test')
+    # if year == 2018:
+    #     year_path = os.path.join(base_path, str(year), f'{year} copy')
     if os.path.isdir(year_path):
         for file_name in os.listdir(year_path):
             if file_name == '.DS_Store': continue
