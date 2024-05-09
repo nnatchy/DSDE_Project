@@ -1,4 +1,5 @@
 config/*
-data/*
+data/nature
+data/scopus
 logs/*
 dags/__pycache__
