@@ -9,26 +9,12 @@ from urllib.parse import quote
 import requests
 from kafka import KafkaProducer, KafkaConsumer
 import time
-
-# default_args = {
-#     'owner': 'airflow',
-#     'depends_on_past': False,
-#     'start_date': datetime(2024, 5, 6, 23, 59),
-#     'retries': 0,
-# }
-
-# dag = DAG(
-#     'nature_scrape_and_process',
-#     default_args=default_args,
-#     description='Scrape nature.com and process articles',
-#     schedule_interval='@daily',
-#     catchup=False
-# )
+from datetime import datetime, timedelta
 
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2023, 5, 6, 23, 59),  # Set to a past date for immediate execution
+    'start_date': datetime(2024, 5, 6, 23, 59),
     'retries': 0,
 }
 
@@ -36,7 +22,7 @@ dag = DAG(
     'nature_scrape_and_process',
     default_args=default_args,
     description='Scrape nature.com and process articles',
-    schedule_interval='@once',  # Change to '@once' for a one-time immediate execution
+    schedule_interval='@daily',
     catchup=False
 )
 
@@ -123,7 +109,7 @@ def scrape_and_save():
                 "health-care", "immunology", "medical-research", "microbiology", "molecular-biology", "neuroscience",
                 "pathogenesis", "physiology", "risk-factors"]
 
-    output_directory = "/opt/airflow/scrape_nature_json"  # Use the correct path
+    output_directory = "data/nature/scrape_nature_json"  # Use the correct path
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
 
@@ -337,8 +323,8 @@ def extract_info(html_content, article_link, article_name=None):
 
 def process_article_details():
     # Define the directory paths
-    input_directory = "/opt/airflow/scrape_nature_json"
-    output_directory = "/opt/airflow/data"
+    input_directory = "data/nature/scrape_nature_json"
+    output_directory = "data/nature/extracts"
     
     # Check if output_directory exists, create if not
     if not os.path.exists(output_directory):
@@ -372,37 +358,112 @@ def process_article_details():
                 json.dump(extracted_info_list, outfile, indent=4)
             print(f"Extraction and processing completed for '{filename}'. Results saved to '{output_file_path}'.")
 
+def get_max_id(output_directory):
+    max_id = 0
+    for filename in os.listdir(output_directory):
+        if filename.startswith("data_research_") and filename.endswith(".json"):
+            file_path = os.path.join(output_directory, filename)
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+                for item in data:
+                    current_id = int(item["id"][1:])  # Assuming ID is in format 'NXXXX'
+                    if current_id > max_id:
+                        max_id = current_id
+    return max_id
 
+
+def convert_json(file_path, current_id):
+    # Define the mapping of classes
+    class_mapping = {
+        "biochemistry": "BIOC",
+        "biological-techniques": "MEDI",
+        "biophysics": "PHYS",
+        "biotechnology": "MEDI",
+        "cancer": "MEDI",
+        "cell-biology": "MEDI",
+        "chemical-biology": "BIOC",
+        "chemistry": "CHEM",
+        "computational-biology-and-bioinformatics": "COMP",
+        "developmental-biology": "MEDI",
+        "diseases": "MEDI",
+        "drug-discovery": "MEDI",
+        "genetics": "MEDI",
+        "immunology": "IMMU",
+        "medical-research": "MEDI",
+        "microbiology": "MEDI",
+        "molecular-biology": "MEDI",
+        "neuroscience": "NEUR",
+        "physiology": "MEDI",
+        "structural-biology": "MEDI",
+        "health-care": "MEDI",
+        "risk-factors": "MEDI",
+        "pathogenesis": "MEDI"
+    }
+    
+    with open(file_path, 'r') as f:
+        input_json = json.load(f)
+        
+        class_info = file_path.split('_')[2]
+        mapped_class = class_mapping.get(class_info, "UNKNOWN")
+
+        output_list = []
+        for item in input_json:
+            publication_date = datetime.strptime(item["Detail"]["Published Date"], "%Y-%m-%d")  # Corrected usage
+            current_id += 1
+            output_item = {
+                "id": "N" + str(current_id).zfill(4),
+                "publicDate": publication_date.strftime("%d/%m/%Y"),
+                "source": 1.5,
+                "coAuthorship": len(item["Detail"]["Authors List"]),
+                "citationCount": len(item["Detail"]["Cited"]),
+                "refCount": len(item["Detail"]["References"]),
+                "Class": mapped_class
+            }
+            output_list.append(output_item)
+
+        return output_list
+
+def convert_all_json_files(dir):
+    directory = "data/nature/extracts"
+    output_directory = os.path.join(dir, "converted_json")
+    os.makedirs(output_directory, exist_ok=True)
+
+    current_id = get_max_id(output_directory)
+    all_output_list = []
+
+    for filename in os.listdir(directory):
+        if filename.endswith(".json"):
+            file_path = os.path.join(directory, filename)
+            output = convert_json(file_path, current_id)
+            all_output_list.extend(output)
+            current_id += len(output)
+
+    output_filepath = os.path.join(output_directory, "combined_output.json")
+    with open(output_filepath, 'w') as f:
+        json.dump(all_output_list, f, indent=4)
 
 # send_to_kafka.py
 def send_nature_to_kafka():
-    output_directory = "/opt/airflow/data"
+    data_dir = "data/nature"
     producer = KafkaProducer(
         bootstrap_servers='kafka1:19092', 
         value_serializer=lambda x: json.dumps(x, ensure_ascii=False).encode('utf-8')
     )
-    # Iterate through each JSON file in the specified directory
-    for filename in os.listdir(output_directory):
-        if filename.endswith(".json"):
-            file_path = os.path.join(output_directory, filename)
-            try:
-                # Open and load the JSON data from the file
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    articles = json.load(file)
-                
-                # Send each article in the JSON file to Kafka
-                for article in articles:
-                    producer.send(
-                        'nature-topic', 
-                        value=article
-                    ).get(timeout=30)  # Ensuring each message is sent
-                    print(f"Sent article titled: '{article.get('Title', 'No title available')}'")  # Safe access to 'Title'
 
-            except Exception as e:
-                print(f"Failed to send message for {filename}: {str(e)}")
+    convert_all_json_files(data_dir)
     
-    producer.flush()  # Ensure all messages are sent before closing the connection
-    print("Finished sending all articles to Kafka.")
+    output_filepath = os.path.join(data_dir, "converted_json", "combined_output.json")
+    try:
+        with open(output_filepath, 'r', encoding='utf-8') as file:
+            natures = json.load(file)
+        
+        producer.send('nature-topic', value=natures).get(timeout=30)
+        print("Sent nature JSON successfully", natures)
+    except Exception as e:
+        print(f"Failed to send message: {str(e)}")
+    
+    producer.flush()
+    print("Finished sending natures to Kafka.")
 
 scrape_task = PythonOperator(
     task_id='scrape_nature',

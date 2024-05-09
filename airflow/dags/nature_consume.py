@@ -2,28 +2,24 @@ from kafka import KafkaConsumer
 import json
 import time
 import os
+import datetime
 import csv
 
-def receive_scopus_from_kafka(year, timeout=20):
-    """
-    Receives messages from Kafka topic for a specific year. The timeout resets whenever a message is received.
-    :param year: The year for which to receive messages.
-    :param timeout: Time to wait in seconds for new messages before giving up after the last message received.
-    """
-    output_dir = "out/scopus"
-    output_file = os.path.join(output_dir, f'output_scopus_{year}.csv')
-    topic_name = f'scopus-topic-{year}'
+def receive_nature_from_kafka(timeout=20):
+    output_dir = "out/nature"
+    output_file = os.path.join(output_dir, "output_nature.csv")
+    topic_name = 'nature-topic'
     consumer = KafkaConsumer(
         topic_name,
+        group_id='nature_consumer_group',  # Set a group ID for the consumer
         bootstrap_servers=['kafka1:19092'],
         auto_offset_reset='earliest',
+        enable_auto_commit=True,  # Enable auto commit
         value_deserializer=lambda x: json.loads(x.decode('utf-8'))
     )
 
-    # Ensure directory exists
     os.makedirs(output_dir, exist_ok=True)
-
-    print(f"Starting the consumer for {year}...")
+    print("Starting the consumer for nature...")
     data = []
     start_time = time.time()
 
@@ -33,24 +29,22 @@ def receive_scopus_from_kafka(year, timeout=20):
             for message in consumer.poll(timeout_ms=10000).values():
                 for msg in message:
                     data.append(msg.value)
-                    print(f"Received: {msg.value}")
+                    print(f'receive data msg: {msg.value}')
                     message_found = True
 
-            # Reset the timer if a message was found
             if message_found:
                 start_time = time.time()
 
-            # Check if the timeout has elapsed since the last message was received
             if time.time() - start_time > timeout:
-                print(f"Timeout reached after {timeout} seconds of inactivity. Stopping consumer for {year}.")
+                print("Timeout reached. Stopping consumer.")
                 break
 
-            if not data:  # If no data has been received yet, continue waiting
-                print(f"No data received yet for {year}. Waiting...")
+            if not data:
+                print("Waiting for data...")
                 continue
 
     finally:
-        consumer.close()  # Ensure consumer is properly closed after the loop
+        consumer.close()
 
     if data:
         if isinstance(data[0], list):
@@ -64,6 +58,5 @@ def receive_scopus_from_kafka(year, timeout=20):
         print(f"Data written to CSV at {output_file}.")
     else:
         print("No data received.")
-
 
     return output_file

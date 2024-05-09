@@ -89,6 +89,11 @@ def process_head_data(bibrecord_data):
                 }
                 head_output_data["enhancement"].append(class_info)
 
+    # Extract source information
+    head_output_data["source"] = {
+        "publication_date": bibrecord_data["head"]["source"]["publicationdate"],
+    }
+
     
     return head_output_data
 
@@ -171,6 +176,7 @@ def process_tail_data(bibrecord_data):
 def get_all_feature(data, file_name):
     output_data = {
         "id": str(file_name),
+        "publicDate": "",
         "source": 1,
         "coAuthorship": 0,
         "citationCount": 0,
@@ -180,8 +186,16 @@ def get_all_feature(data, file_name):
 
     bibrecord_data = data['item']['bibrecord']
     
-    # find num authorship
     head_data = process_head_data(bibrecord_data)
+
+    # find publication date
+    date = head_data['source']['publication_date']
+    if 'day' not in date:
+        output_data['publicDate'] = None
+    else:
+        output_data['publicDate'] = date['day'] + '/' + date['month'] + '/' + date['year']
+
+    # find num authorship
     output_data['coAuthorship'] = num_author_group(head_data['author_groups'])
 
     # find citation count
@@ -206,35 +220,13 @@ def get_all_feature(data, file_name):
     return output_data
 
 def process_directory(year):
-    base_path = "/opt/airflow/"
+    base_path = "data/scopus"
     producer = KafkaProducer(
         bootstrap_servers=['kafka1:19092'],
         value_serializer=lambda x: json.dumps(x).encode('utf-8'),
         request_timeout_ms=60000,
         retry_backoff_ms=500,
     )
-    # for year in range(2018, 2019):  # Assuming years 2018 to 2023
-    #     year_path = os.path.join(base_path, str(year), f'{year}')
-    #     if os.path.isdir(year_path):
-    #         for file_name in os.listdir(year_path):
-    #             file_path = os.path.join(year_path, file_name)
-    #             # Detect file encoding
-    #             with open(file_path, 'rb') as f:  # open in binary mode
-    #                 raw_data = f.read()
-    #                 result = chardet.detect(raw_data)
-    #                 encoding = result['encoding']
-
-    #             # Read the file with detected encoding
-    #             with open(file_path, 'r', encoding=encoding) as file:
-    #                 json_data = json.load(file)
-    #                 abstracts_info = json_data.get("abstracts-retrieval-response", {})
-    #                 data = get_all_feature(abstracts_info, file_name)
-    #                 try:
-    #                     producer.send('test-topic', value=data).get(timeout=30)  # Wait up to 30 seconds
-    #                     print(f"Sent: {data}")
-    #                 except Exception as e:
-    #                     print(f"Failed to send message: {str(e)}", file_name)
-    #                 time.sleep(1)
 
     year_path = os.path.join(base_path, str(year), f'{year}_test')
     if year == 2018:
