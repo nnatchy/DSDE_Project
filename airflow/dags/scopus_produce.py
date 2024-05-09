@@ -228,11 +228,11 @@ def process_directory(year):
         retry_backoff_ms=500,
     )
     
-    # For real zip
+    # ! For real zip
     
-    year_path = os.path.join(base_path, str(year), f'{year}_test')
+    year_path = os.path.join(base_path, str(year), f'{year}')
     
-    # For test zip
+    # ! For test zip
 
     # year_path = os.path.join(base_path, str(year), f'{year}_test')
     # if year == 2018:

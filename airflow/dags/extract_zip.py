@@ -15,7 +15,15 @@ def download_and_extract(year, base_path="/opt/airflow/data"):
 
     # Check if the zip file already exists
     if not os.path.exists(zip_path):
+        
+        # ! For real zip
+        
         url = f"https://github.com/nnatchy/DSDE_Project/raw/main/{year}.zip"
+        
+        # ! For test zip
+        
+        # url = f"https://github.com/nnatchy/DSDE_Project/raw/main/{year}_test.zip"
+        
         response = requests.get(url)
         if response.status_code == 200:
             with open(zip_path, 'wb') as f:
