@@ -89,6 +89,11 @@ def process_head_data(bibrecord_data):
                 }
                 head_output_data["enhancement"].append(class_info)
 
+    # Extract source information
+    head_output_data["source"] = {
+        "publication_date": bibrecord_data["head"]["source"]["publicationdate"],
+    }
+
     
     return head_output_data
 
