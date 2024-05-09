@@ -2,9 +2,11 @@ import requests
 import zipfile
 import os
 
-def download_and_extract(year, base_path="/opt/airflow/"):
-    zip_path = os.path.join(base_path, f"{year}.zip")
-    extract_path = os.path.join(base_path, str(year))
+def download_and_extract(year, base_path="/opt/airflow/data"):
+    output_dir =  os.path.join(base_path, "scopus")
+    os.makedirs(output_dir, exist_ok=True)
+    zip_path = os.path.join(output_dir, f"{year}.zip")
+    extract_path = os.path.join(output_dir, str(year))
 
     # Check if the directory already exists
     if os.path.exists(extract_path):
