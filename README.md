@@ -1,6 +1,6 @@
 # DSDE_Project
 
-Welcome to "I don't even know what i'm doing in this DSDE Project" Project !
+Welcome to "CV ถอนทำไม (AKA.Why Cv Withdraw)" Project !
 
 ## Makefile Commands
 
