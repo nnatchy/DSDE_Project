@@ -21,7 +21,7 @@ default_args = {
 }
 
 dag = DAG(
-    'airflow_pipeline_till_kafka',
+    'airflow_pipeline_till_spark',
     default_args=default_args,
     description="A pipeline to handle web scraping and processing",
     schedule_interval='@daily',
