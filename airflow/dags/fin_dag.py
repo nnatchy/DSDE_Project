@@ -1,5 +1,6 @@
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 from datetime import datetime, timedelta
 
 # Import your specific functions
@@ -8,6 +9,8 @@ from nature_scrape_dag import scrape_and_save, process_article_details, send_nat
 from scopus_produce import process_directory
 from nature_consume import receive_nature_from_kafka
 from scopus_consume import receive_scopus_from_kafka
+from nature_spark import process_nature_dataset
+from scopus_spark import process_scopus_dataset
 
 default_args = {
     'owner': 'airflow',
@@ -56,8 +59,15 @@ receive_from_kafka_task = PythonOperator(
     dag=dag,
 )
 
+nature_spark_job = SparkSubmitOperator(
+    task_id=f'nature_spark_job',
+    conn_id="spark-conn",
+    application="dags/nature_spark.py",
+    dag=dag
+)
+
 # Set dependencies to ensure proper sequence
-download_task >> scrape_task >> process_task >> [send_to_kafka_task, receive_from_kafka_task]  # Direct sequence
+download_task >> scrape_task >> process_task >> [send_to_kafka_task, receive_from_kafka_task] >> nature_spark_job  # Direct sequence
 
 # Handling each year
 prod_l = []
@@ -76,7 +86,13 @@ for year in years:
         op_kwargs={'year': year},
         dag=dag,
     )
+    scopus_spark_job = SparkSubmitOperator(
+        task_id=f'scopus_spark_job_{year}',
+        conn_id="spark-conn",
+        application="dags/scopus_spark.py",
+        application_args=[str(year)],
+        dag=dag
+    )
     prod_l.append(produce_task)
     cons_l.append(consume_task)
-    process_task >> [produce_task, consume_task]  # Ensure sequence for each year
-# process_task >> [prod_l, cons_l, send_to_kafka_task, receive_from_kafka_task]
+    process_task >> [produce_task, consume_task] >> scopus_spark_job # Ensure sequence for each year

@@ -1,114 +1,69 @@
+import sys
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, explode, to_date, year, round as spark_round, max, sum as spark_sum, count, split, regexp_replace
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DateType, ArrayType
-import os
-from pathlib import Path
+from pyspark.sql.functions import col, explode, to_date, year as spark_year, round, max, sum, count, split, regexp_replace, quarter, concat_ws
 
-schema = StructType([
-    StructField("id", StringType(), True),
-    StructField("publicDate", DateType(), True),
-    StructField("source", IntegerType(), True),
-    StructField("coAuthorship", IntegerType(), True),
-    StructField("citationCount", IntegerType(), True),
-    StructField("refCount", IntegerType(), True),
-    StructField("Class", StringType(), True)
-])
+def create_spark_session(app_name):
+    """ Create and return a Spark session. """
+    return SparkSession.builder.appName(app_name).getOrCreate()
 
+def read_data(spark, input_file):
+    """ Check if the file exists and read data from CSV. """
+    if not spark.sparkContext._jvm.org.apache.hadoop.fs.FileSystem.get(
+        spark.sparkContext._jsc.hadoopConfiguration()
+    ).exists(spark._jvm.org.apache.hadoop.fs.Path(input_file)):
+        print("File not found, please check the path and permissions.")
+        spark.stop()
+        return None
+    return spark.read.option("header", "true").csv(input_file)
 
-# Ensure the Spark session is available
-year = 2018
-spark = SparkSession.builder.appName(f"SparkProcessing{year}").getOrCreate()
+def prepare_and_process_dataframe(df):
+    """ Prepare the dataframe by cleaning data, exploding and computing scores. """
+    df = df.withColumn("Class", regexp_replace(col("Class"), "[\\[\\]'']", ""))
+    df = df.withColumn("Class", split(col("Class"), ",\\s*"))
+    df = df.dropDuplicates(["id"])
+    df = df.withColumn('citationCount', col('citationCount').cast('int'))
+    df = df.withColumn('coAuthorship', col('coAuthorship').cast('int'))
+    df = df.withColumn('refCount', col('refCount').cast('int'))
 
-# Print current working directory
-current_directory = os.getcwd()
-print(f"Current working directory: {current_directory}")
+    # Aggregating max values for normalization
+    max_values = df.agg(
+        max("citationCount").alias("maxCitation"),
+        max("refCount").alias("maxRef"),
+        max("coAuthorship").alias("maxCoAuthor")
+    ).collect()[0]
 
-input_file = f"/opt/airflow/scopus/output_{year}.csv"
-print(f"Attempting to read from: {input_file}")
+    df = df.withColumn("Class", explode(col("Class")))
+    df = df.withColumn(
+        "Score",
+        round(
+            col("source") * (
+                0.4 * (col("citationCount") / max_values["maxCitation"] * 10) +
+                0.2 * (col("refCount") / max_values["maxRef"] * 10) +
+                0.1 * (col("coAuthorship") / max_values["maxCoAuthor"] * 10)
+            ), 4
+        )
+    )
+    return df
 
-# Check if the input file exists
-csv_file = Path(input_file)
-if csv_file.is_file():
-    print("File exists, proceeding with reading.")
-else:
-    print("File not found, please check the path and permissions.")
+def write_results(df, output_file):
+    """ Write results to CSV after additional transformations. """
+    df = df.withColumn("publicDate", to_date(col("publicDate"), "dd/MM/yyyy"))
+    df = df.withColumn("Year", spark_year(col("publicDate")))
+    df = df.withColumn("Quarter", quarter(col("publicDate")))
+    grouped_df = df.groupBy("Class", "Year", "Quarter").agg(
+        round(sum("Score"), 4).alias("Total Score"),
+        count("id").alias("Paper Count")
+    )
+    grouped_df.coalesce(1).write.csv(path=output_file, mode="overwrite", header=True)
+
+def process_scopus_dataset(input_file, output_file, app_name):
+    spark = create_spark_session(app_name)
+    df = read_data(spark, input_file)
+    if df is not None:
+        df = prepare_and_process_dataframe(df)
+        write_results(df, output_file)
     spark.stop()
 
-# Load the CSV file with header
-df = spark.read.schema(schema).option("header", "true").csv(input_file)
-
-print(f"HELLO {23}")
-
-print(df)
-
-# Remove brackets and quotes, then split into array
-df = df.withColumn("Class", regexp_replace(col("Class"), "[\\[\\]'']", ""))  # Remove [ ], and '
-df = df.withColumn("Class", split(col("Class"), ",\\s*"))  # Split into array
-
-print("ANOTHER:", df)
-
-print(f"HELLO {123}")
-
-df = df.dropDuplicates(["id"])
-
-print(f"HELLO {213}")
-
-
-# Cast data types as necessary
-df = df.withColumn('citationCount', col('citationCount').cast('int'))
-df = df.withColumn('coAuthorship', col('coAuthorship').cast('int'))
-df = df.withColumn('refCount', col('refCount').cast('int'))
-
-max_values = df.agg(
-    max("citationCount").alias("maxCitation"),
-    max("refCount").alias("maxRef"),
-    max("coAuthorship").alias("maxCoAuthor")
-).first()[0]
-
-# Max value for each feature for normalization
-max_citation = max_values["maxCitation"]
-max_ref = max_values["maxRef"]
-max_coauthor = max_values["maxCoAuthor"]
-
-# Find all Class
-genre_counts = df.withColumn("Genre", explode(col("Class")))\
-                 .groupBy("Genre")\
-                 .count()  
-
-print('number of all the class:', genre_counts.count())
-
-# Explode the class
-exploded_df = df.withColumn("Class", explode(col("Class")))
-
-# Drop na for invalid rows
-cleaned_df = exploded_df.dropna()
-
-# Compute the score for each paper
-cleaned_df = cleaned_df.withColumn(
-    "Score",
-    spark_round(
-        col("source") * (
-            0.4 * (col("citationCount") / max_citation * 10) +
-            0.2 * (col("refCount") / max_ref * 10) +
-            0.1 * (col("coAuthorship") / max_coauthor * 10)
-        ), 4
-    )
-)
-
-# Convert publicDate from string to date type
-cleaned_df = cleaned_df.withColumn("publicDate", to_date(col("publicDate"), "dd/MM/yyyy"))
-
-# Extract Year and Quarter from publicDate
-cleaned_df = cleaned_df.withColumn("Year", year(col("publicDate")))
-cleaned_df = cleaned_df.withColumn("Quarter", quarter(col("publicDate")))
-
-# Group by Class, Year, and Quarter and perform aggregations
-grouped_df = cleaned_df.groupBy("Class", "Year", "Quarter").agg(
-    spark_round(spark_sum("Score"), 4).alias("Total Score"),
-    count("id").alias("Paper Count")  # Count the number of papers per group
-)
-
-# Coalesce the DataFrame to 1 partition to avoid multiple part files
-grouped_df.coalesce(1).write.csv(path="./test_output.csv", mode="overwrite", header=True)
-
-spark.stop()
+if __name__ == '__main__':
+    year = sys.argv[1] if len(sys.argv) > 1 else 2022
+    process_scopus_dataset(f"out/scopus/output_scopus_{year}.csv", f"out/scopus/spark_output_{year}.csv", "SparkProcessingScopus")
